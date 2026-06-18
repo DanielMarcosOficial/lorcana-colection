@@ -256,6 +256,28 @@ export async function upsertCard(
   return { created: true, id: created.id };
 }
 
+export async function findAlternateVersions(cardId: string) {
+  const card = await prisma.card.findUnique({
+    where: { id: cardId },
+    select: { name: true, version: true },
+  });
+  if (!card) return [];
+
+  return prisma.card.findMany({
+    where: {
+      id: { not: cardId },
+      name: card.name,
+      // null matches NULL in DB (version IS NULL); string matches exactly
+      version: card.version,
+    },
+    include: { set: { select: { code: true, name: true } } },
+    orderBy: [
+      { set: { releasedAt: "asc" } },
+      { collectorNumber: "asc" },
+    ],
+  });
+}
+
 export async function countCardsBySetId(setId: string): Promise<number> {
   return prisma.card.count({ where: { setId } });
 }
