@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SyncStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model User {
+  id              String           @id @default(cuid())
+  name            String
+  username        String           @unique
+  email           String           @unique
+  passwordHash    String
+  avatarUrl       String?
+  country         String?
+  role            Role             @default(USER)
+  profilePublic   Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  sessions        Session[]
+  collectionItems CollectionItem[]
+
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model CardSet {
+  id            String    @id @default(cuid())
+  externalId    String    @unique
+  code          String    @unique
+  name          String
+  description   String?   @db.Text
+  releasedAt    DateTime?
+  prereleasedAt DateTime?
+  totalCards    Int       @default(0)
+  logoUrl       String?
+  symbolUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastSyncedAt  DateTime?
+  cards         Card[]
+
+  @@map("card_sets")
+}
+
+model Card {
+  id              String    @id @default(cuid())
+  externalId      String    @unique
+  setId           String
+  tcgplayerId     Int?
+  name            String
+  version         String?
+  fullName        String
+  collectorNumber String
+  rarity          String
+  ink             String?
+  cost            Int?
+  inkwell         Boolean   @default(false)
+  type            Json
+  classifications Json
+  strength        Int?
+  willpower       Int?
+  lore            Int?
+  moveCost        Int?
+  rulesText       String?   @db.Text
+  flavorText      String?   @db.Text
+  illustrators    Json
+  imageSmall      String?
+  imageNormal     String?
+  imageLarge      String?
+  priceUsd        Decimal?  @db.Decimal(10, 2)
+  priceUsdFoil    Decimal?  @db.Decimal(10, 2)
+  priceUpdatedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastSyncedAt    DateTime?
+  set             CardSet          @relation(fields: [setId], references: [id])
+  collectionItems CollectionItem[]
+  priceHistory    PriceHistory[]
+
+  @@unique([setId, collectorNumber])
+  @@index([name])
+  @@index([setId])
+  @@index([rarity])
+  @@index([ink])
+  @@index([collectorNumber])
+  @@map("cards")
+}
+
+model CollectionItem {
+  id                  String   @id @default(cuid())
+  userId              String
+  cardId              String
+  normalQuantity      Int      @default(0)
+  foilQuantity        Int      @default(0)
+  normalPurchasePrice Decimal? @db.Decimal(10, 2)
+  foilPurchasePrice   Decimal? @db.Decimal(10, 2)
+  notes               String?  @db.Text
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card                Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cardId])
+  @@index([userId])
+  @@index([cardId])
+  @@map("collection_items")
+}
+
+model PriceHistory {
+  id           String   @id @default(cuid())
+  cardId       String
+  priceUsd     Decimal? @db.Decimal(10, 2)
+  priceUsdFoil Decimal? @db.Decimal(10, 2)
+  recordedAt   DateTime @db.Date
+  source       String   @default("lorcast")
+  createdAt    DateTime @default(now())
+  card         Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([cardId, source, recordedAt])
+  @@index([cardId, recordedAt])
+  @@map("price_history")
+}
+
+model SyncRun {
+  id           String     @id @default(cuid())
+  source       String
+  status       SyncStatus @default(PENDING)
+  startedAt    DateTime   @default(now())
+  finishedAt   DateTime?
+  setsCreated  Int        @default(0)
+  setsUpdated  Int        @default(0)
+  cardsCreated Int        @default(0)
+  cardsUpdated Int        @default(0)
+  cardsSkipped Int        @default(0)
+  errorCount   Int        @default(0)
+  metadata     Json?
+  errors       SyncError[]
+
+  @@map("sync_runs")
+}
+
+model SyncError {
+  id          String   @id @default(cuid())
+  syncRunId   String
+  entityType  String
+  externalId  String?
+  message     String   @db.Text
+  details     Json?
+  createdAt   DateTime @default(now())
+  syncRun     SyncRun  @relation(fields: [syncRunId], references: [id])
+
+  @@map("sync_errors")
+}
